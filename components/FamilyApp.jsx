@@ -5,6 +5,7 @@ import { todayISO, addDays, fmt, fmtTime, daysBetween } from '@/lib/dates.mjs';
 import { HOUSES, houseFor, weekStart, nights, nextChange, upcomingWeeks } from '@/lib/custody.mjs';
 import { toEntries, byWhen } from '@/lib/team.mjs';
 import { pushSupported, currentSubscription, turnOnAlerts, dropAlerts, pingOtherParent } from '@/lib/alerts.mjs';
+import { KidTalkCard, ParentTalkCards } from '@/components/Talk.jsx';
 
 const KINDS = [
   ['test', 'Test'],
@@ -110,12 +111,12 @@ function SignIn() {
 }
 
 function useFamilyData(enabled) {
-  const [state, setState] = useState({ loading: true, error: '', members: [], pattern: null, overrides: new Map(), items: [], team: [], teamReady: false, changes: [] });
+  const [state, setState] = useState({ loading: true, error: '', members: [], pattern: null, overrides: new Map(), items: [], team: [], teamReady: false, changes: [], talkInbox: [], talkMine: null });
 
   const load = useCallback(async () => {
     if (!enabled) return;
     const since = addDays(todayISO(), -60);
-    const [m, p, o, i, t, c] = await Promise.all([
+    const [m, p, o, i, t, c, ti, tm] = await Promise.all([
       supabase.from('members').select('*').order('sort'),
       supabase.from('custody_pattern').select('*').maybeSingle(),
       supabase.from('custody_overrides').select('*'),
@@ -126,6 +127,10 @@ function useFamilyData(enabled) {
       // What the other parent changed lately (Dad and Mom only). Skipped until
       // the slice 3 SQL is run.
       supabase.rpc('unseen_changes'),
+      // "Want to talk?" asks: a parent's inbox and a boy's own ask. Each
+      // returns nothing for everyone else. Skipped until the slice 4 SQL is run.
+      supabase.rpc('talk_inbox'),
+      supabase.rpc('talk_mine'),
     ]);
     const err = m.error || p.error || o.error || i.error;
     setState({
@@ -138,6 +143,8 @@ function useFamilyData(enabled) {
       team: t.error ? [] : toEntries(t.data),
       teamReady: !t.error,
       changes: c.error ? [] : c.data || [],
+      talkInbox: ti.error ? [] : ti.data || [],
+      talkMine: tm.error ? null : (tm.data || [])[0] || null,
     });
   }, [enabled]);
 
@@ -207,7 +214,7 @@ function Home({ session }) {
       <main className="content">
         {data.error && <p className="error">{data.error}</p>}
         {current ? (
-          <PersonTab person={current} me={me} isParent={isParent} data={data} today={today} onEdit={setEditing} onNight={setNightEdit} reload={changed} />
+          <PersonTab person={current} me={me} isParent={isParent} data={data} today={today} onEdit={setEditing} onNight={setNightEdit} reload={changed} reloadOnly={reload} />
         ) : (
           <FamilyTab me={me} isParent={isParent} isMom={isMom} seesAll={seesAll} data={data} byId={byId} today={today} onEdit={setEditing} onNight={setNightEdit} reload={changed} reloadOnly={reload} />
         )}
@@ -273,6 +280,7 @@ function FamilyTab({ me, isParent, isMom, seesAll, data, byId, today, onEdit, on
   const soon = [...data.items.filter((i) => !i.done && i.due_on <= end), ...data.team.filter((e) => e.due_on <= end)].sort(byWhen);
   return (
     <>
+      {seesAll && <ParentTalkCards asks={data.talkInbox} isMom={isMom} reload={reloadOnly} />}
       {seesAll && <ChangesCard changes={data.changes} reload={reloadOnly} />}
       <Tonight data={data} today={today} />
       <NightStrip data={data} today={today} isParent={seesAll} onNight={onNight} />
@@ -286,7 +294,7 @@ function FamilyTab({ me, isParent, isMom, seesAll, data, byId, today, onEdit, on
   );
 }
 
-function PersonTab({ person, me, isParent, data, today, onEdit, onNight, reload }) {
+function PersonTab({ person, me, isParent, data, today, onEdit, onNight, reload, reloadOnly }) {
   const [showDone, setShowDone] = useState(false);
   const mine = data.items.filter((i) => i.member_id === person.id);
   const open = mine.filter((i) => !i.done);
@@ -294,6 +302,7 @@ function PersonTab({ person, me, isParent, data, today, onEdit, onNight, reload 
   const isDad = person.role === 'parent';
   return (
     <>
+      {person.id === me.id && me.role === 'kid' && <KidTalkCard me={me} ask={data.talkMine} reload={reloadOnly} />}
       {isDad ? <WeeksCard data={data} today={today} /> : <Tonight data={data} today={today} who={person.name} />}
       <TeamCard entries={data.team.filter((e) => e.member_ids.includes(person.id))} today={today} showSetup={isParent && isDad && !data.teamReady} />
       <section className="card">

@@ -1,5 +1,5 @@
 // family-notify: sends Dad or Mom a phone alert when the other one changes
-// a night or one of the boys' items. The app calls it after a change; it
+// a night or one of the boys' items, or when a boy taps "Want to talk?". The app calls it after a change; it
 // sends only what the database logged in family.changes and hasn't sent yet,
 // so calling it again (or by anyone) sends nothing new.
 // { "action": "key" } returns the public alert key the app subscribes with.
@@ -38,37 +38,14 @@ Deno.serve(async (req) => {
 
   webpush.setVapidDetails('https://loy-family-organizer-loti.vercel.app', keys.public_key, keys.private_key);
 
-  // Claim unsent changes from the last hour (older ones just show in the app).
-  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { data: claimed, error } = await db
-    .from('changes')
-    .update({ pushed_at: new Date().toISOString() })
-    .is('pushed_at', null)
-    .gte('at', since)
-    .select('id, actor_id, summary, at');
-  if (error) return json({ error: error.message }, 500);
-  if (!claimed?.length) return json({ sent: 0 });
-
   const { data: members } = await db.from('members').select('id, name, role');
   const byId = new Map((members || []).map((m) => [m.id, m]));
   const parents = (members || []).filter((m) => m.role === 'parent' || m.role === 'coparent');
-
   let sent = 0;
-  const byActor = new Map<string, typeof claimed>();
-  for (const c of claimed.sort((a, b) => a.at.localeCompare(b.at))) {
-    if (!c.actor_id) continue;
-    byActor.set(c.actor_id, [...(byActor.get(c.actor_id) || []), c]);
-  }
-  for (const [actorId, list] of byActor) {
-    const actor = byId.get(actorId)?.name || 'Someone';
-    const targets = parents.filter((p) => p.id !== actorId).map((p) => p.id);
-    if (!targets.length) continue;
-    const { data: subs } = await db.from('push_subscriptions').select('endpoint, p256dh, auth').in('member_id', targets);
-    const last = list[list.length - 1];
-    const body = list.length === 1
-      ? `${actor} ${last.summary}.`
-      : `${actor} made ${list.length} changes. Latest: ${last.summary}.`;
-    const payload = JSON.stringify({ title: 'Loy Family', body, tag: `change-${actorId}` });
+
+  async function sendTo(memberIds: string[], payload: string) {
+    if (!memberIds.length) return;
+    const { data: subs } = await db.from('push_subscriptions').select('endpoint, p256dh, auth').in('member_id', memberIds);
     for (const s of subs || []) {
       try {
         await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 86400 });
@@ -78,6 +55,42 @@ Deno.serve(async (req) => {
         if (code === 404 || code === 410) await db.from('push_subscriptions').delete().eq('endpoint', s.endpoint);
       }
     }
+  }
+
+  // A boy's "Want to talk?" ask. The alert says only who wants to talk; the
+  // topic and note stay in the app (this function never gets them).
+  const { data: talks } = await db.rpc('claim_talk_alerts');
+  for (const t of talks || []) {
+    const targets = parents
+      .filter((p) => (p.role === 'parent' && t.to_dad) || (p.role === 'coparent' && t.to_mom))
+      .map((p) => p.id);
+    await sendTo(targets, JSON.stringify({ title: 'Loy Family', body: `${t.kid_name} would like to talk`, tag: `talk-${t.kid_id}` }));
+  }
+
+  // Claim unsent changes from the last hour (older ones just show in the app).
+  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { data: claimed, error } = await db
+    .from('changes')
+    .update({ pushed_at: new Date().toISOString() })
+    .is('pushed_at', null)
+    .gte('at', since)
+    .select('id, actor_id, summary, at');
+  if (error) return json({ error: error.message }, 500);
+  if (!claimed?.length) return json({ sent });
+
+  const byActor = new Map<string, typeof claimed>();
+  for (const c of claimed.sort((a, b) => a.at.localeCompare(b.at))) {
+    if (!c.actor_id) continue;
+    byActor.set(c.actor_id, [...(byActor.get(c.actor_id) || []), c]);
+  }
+  for (const [actorId, list] of byActor) {
+    const actor = byId.get(actorId)?.name || 'Someone';
+    const targets = parents.filter((p) => p.id !== actorId).map((p) => p.id);
+    const last = list[list.length - 1];
+    const body = list.length === 1
+      ? `${actor} ${last.summary}.`
+      : `${actor} made ${list.length} changes. Latest: ${last.summary}.`;
+    await sendTo(targets, JSON.stringify({ title: 'Loy Family', body, tag: `change-${actorId}` }));
   }
   return json({ sent });
 });
