@@ -11,10 +11,16 @@ plus tests, meets, games and to-dos per person.
 - **Custody nights:** the Google Calendar series "Kids with Bryant" / "Kids with Jessalyn"
   alternate every Friday. The app stores one anchor date (`family.custody_pattern`) and
   computes every night from it; tapping a night saves an exception in `family.custody_overrides`.
+- **Broncos:** practices and games are read live from the Broncos app's `football.team_events`
+  through `family.team_events()`, for teams linked in `family.team_links` (Brooks plays, Dad coaches).
+  Edit the schedule in the Broncos app and it shows here. Kids see only their own teams.
+- **School:** first ParentSquare items were added by hand in `supabase/002_broncos_and_school.sql`;
+  automatic Gmail extraction comes later.
 
 ## Setup
 
-1. Run `supabase/001_family_schema.sql` in the Supabase SQL editor (with real sign-in emails).
+1. Run `supabase/001_family_schema.sql` in the Supabase SQL editor (with real sign-in emails),
+   then `supabase/002_broncos_and_school.sql`.
 2. Supabase > Project Settings > Data API > Exposed schemas: add `family`.
 3. Supabase > Authentication > Users > Add user > Create new user, once per person,
    with the emails from step 1 and "Auto Confirm User" ticked.

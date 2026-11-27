@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, configured } from '@/lib/supabase.mjs';
 import { todayISO, addDays, fmt, fmtTime, daysBetween } from '@/lib/dates.mjs';
 import { HOUSES, houseFor, weekStart, nights, nextChange, upcomingWeeks } from '@/lib/custody.mjs';
+import { toEntries, byWhen } from '@/lib/team.mjs';
 
 const KINDS = [
   ['test', 'Test'],
@@ -107,16 +108,19 @@ function SignIn() {
 }
 
 function useFamilyData(enabled) {
-  const [state, setState] = useState({ loading: true, error: '', members: [], pattern: null, overrides: new Map(), items: [] });
+  const [state, setState] = useState({ loading: true, error: '', members: [], pattern: null, overrides: new Map(), items: [], team: [], teamReady: false });
 
   const load = useCallback(async () => {
     if (!enabled) return;
     const since = addDays(todayISO(), -60);
-    const [m, p, o, i] = await Promise.all([
+    const [m, p, o, i, t] = await Promise.all([
       supabase.from('members').select('*').order('sort'),
       supabase.from('custody_pattern').select('*').maybeSingle(),
       supabase.from('custody_overrides').select('*'),
       supabase.from('items').select('*').or(`done.eq.false,due_on.gte.${since}`).order('due_on').order('due_time', { nullsFirst: true }),
+      // Broncos practices and games, live from the Broncos app. Until the
+      // slice 2 SQL is run this function doesn't exist; the app just skips it.
+      supabase.rpc('team_events', { since: todayISO() }),
     ]);
     const err = m.error || p.error || o.error || i.error;
     setState({
@@ -126,6 +130,8 @@ function useFamilyData(enabled) {
       pattern: p.data || null,
       overrides: new Map((o.data || []).map((r) => [r.night, r])),
       items: i.data || [],
+      team: t.error ? [] : toEntries(t.data),
+      teamReady: !t.error,
     });
   }, [enabled]);
 
@@ -249,7 +255,7 @@ function NightStrip({ data, today, isParent, onNight }) {
 
 function FamilyTab({ me, isParent, data, byId, today, onEdit, onNight, reload }) {
   const end = addDays(today, 7);
-  const soon = data.items.filter((i) => !i.done && i.due_on <= end);
+  const soon = [...data.items.filter((i) => !i.done && i.due_on <= end), ...data.team.filter((e) => e.due_on <= end)].sort(byWhen);
   return (
     <>
       <Tonight data={data} today={today} />
@@ -271,6 +277,7 @@ function PersonTab({ person, me, isParent, data, today, onEdit, onNight, reload 
   return (
     <>
       {isDad ? <WeeksCard data={data} today={today} /> : <Tonight data={data} today={today} who={person.name} />}
+      <TeamCard entries={data.team.filter((e) => e.member_ids.includes(person.id))} today={today} showSetup={isParent && isDad && !data.teamReady} />
       <section className="card">
         <h2>{person.id === me.id ? 'Your list' : `${person.name}'s list`}</h2>
         <ItemList items={open} byId={{}} today={today} onEdit={onEdit} reload={reload} empty="Nothing open. Tap + to add something." />
@@ -280,6 +287,30 @@ function PersonTab({ person, me, isParent, data, today, onEdit, onNight, reload 
         {showDone && <ItemList items={done} byId={{}} today={today} onEdit={onEdit} reload={reload} />}
       </section>
     </>
+  );
+}
+
+function TeamCard({ entries, today, showSetup }) {
+  const [all, setAll] = useState(false);
+  if (showSetup) {
+    return (
+      <section className="card">
+        <h2>Broncos</h2>
+        <p className="muted small">The Broncos schedule shows here once the slice 2 setup SQL has been run in Supabase.</p>
+      </section>
+    );
+  }
+  if (!entries.length) return null;
+  const shown = all ? entries : entries.slice(0, 4);
+  return (
+    <section className="card">
+      <div className="row-between">
+        <h2>Broncos</h2>
+        <span className="muted small">{entries.filter((e) => e.kind === 'game').length} games left</span>
+      </div>
+      <ItemList items={shown} byId={{}} today={today} />
+      {entries.length > 4 && <button className="link small" onClick={() => setAll((v) => !v)}>{all ? 'Show less' : `Show all ${entries.length}`}</button>}
+    </section>
   );
 }
 
@@ -313,6 +344,26 @@ function ItemList({ items, byId, showWho, today, onEdit, reload, empty }) {
         const head = it.due_on !== lastDate;
         lastDate = it.due_on;
         const who = byId[it.member_id];
+        if (it.team) {
+          const names = (it.member_ids || []).map((id) => byId[id]).filter(Boolean);
+          return (
+            <li key={it.id}>
+              {head && <p className="date-head">{it.due_on === today ? 'Today' : it.due_on === addDays(today, 1) ? 'Tomorrow' : fmt(it.due_on)}</p>}
+              <div className="item team">
+                <span className={`team-dot k-${it.kind}`} aria-hidden="true" />
+                <div className="item-body">
+                  <span className="title">{it.title}</span>
+                  <span className="meta">
+                    <span className="kind">{KIND_LABEL[it.kind]}</span>
+                    {it.due_time && <span>{fmtTime(it.due_time)}</span>}
+                    {it.detail && <span>{it.detail}</span>}
+                    {showWho && names.map((w) => <span key={w.id} className="who-chip" style={{ '--c': w.color }}>{w.name}</span>)}
+                  </span>
+                </div>
+              </div>
+            </li>
+          );
+        }
         const late = !it.done && it.due_on < today;
         return (
           <li key={it.id}>
