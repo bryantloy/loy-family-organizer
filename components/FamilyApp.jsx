@@ -58,6 +58,7 @@ const LOGINS = [
   { name: 'Bryson', email: plus('bryson'), color: '#16a34a' },
   { name: 'Bennett', email: plus('bennett'), color: '#ea580c' },
   { name: 'Brooks', email: plus('brooks'), color: '#9333ea' },
+  { name: 'Mom', email: plus('mom'), color: '#db2777' },
 ];
 
 function SignIn() {
@@ -155,6 +156,9 @@ function Home({ session }) {
   const email = (session.user.email || '').toLowerCase();
   const me = data.members.find((m) => (m.email || '').toLowerCase() === email);
   const isParent = me?.role === 'parent';
+  // Mom ("viewer") sees the Family tab and every boy's tab, and changes nothing.
+  const isViewer = me?.role === 'viewer';
+  const seesAll = isParent || isViewer;
   const byId = useMemo(() => Object.fromEntries(data.members.map((m) => [m.id, m])), [data.members]);
 
   if (data.loading) return <Shell><p className="muted">Loading…</p></Shell>;
@@ -170,7 +174,8 @@ function Home({ session }) {
     );
   }
 
-  const tabs = [{ key: 'family', label: 'Family' }, ...data.members.filter((m) => isParent || m.id === me.id).map((m) => ({ key: m.id, label: m.name, color: m.color }))];
+  const people = data.members.filter((m) => m.role !== 'viewer');
+  const tabs = [{ key: 'family', label: 'Family' }, ...people.filter((m) => isParent || (isViewer ? m.role === 'kid' : m.id === me.id)).map((m) => ({ key: m.id, label: m.name, color: m.color }))];
   const current = tab === 'family' ? null : byId[tab];
 
   return (
@@ -192,17 +197,19 @@ function Home({ session }) {
       <main className="content">
         {data.error && <p className="error">{data.error}</p>}
         {current ? (
-          <PersonTab person={current} me={me} isParent={isParent} data={data} today={today} onEdit={setEditing} onNight={setNightEdit} reload={reload} />
+          <PersonTab person={current} me={me} isParent={isParent} data={data} today={today} onEdit={isViewer ? null : setEditing} onNight={setNightEdit} reload={reload} />
         ) : (
-          <FamilyTab me={me} isParent={isParent} data={data} byId={byId} today={today} onEdit={setEditing} onNight={setNightEdit} reload={reload} />
+          <FamilyTab me={me} isParent={isParent} isViewer={isViewer} seesAll={seesAll} data={data} byId={byId} today={today} onEdit={isViewer ? null : setEditing} onNight={setNightEdit} reload={reload} />
         )}
       </main>
 
-      <button className="fab" aria-label="Quick add" onClick={() => setEditing({ member_id: current?.id || me.id, kind: 'todo', title: '', due_on: today, due_time: '', notes: '' })}>
-        +
-      </button>
+      {!isViewer && (
+        <button className="fab" aria-label="Quick add" onClick={() => setEditing({ member_id: current?.id || me.id, kind: 'todo', title: '', due_on: today, due_time: '', notes: '' })}>
+          +
+        </button>
+      )}
 
-      {editing && <ItemSheet item={editing} me={me} isParent={isParent} members={data.members} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
+      {editing && <ItemSheet item={editing} me={me} isParent={isParent} members={people} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload(); }} />}
       {nightEdit && <NightSheet night={nightEdit} data={data} onClose={() => setNightEdit(null)} onSaved={() => { setNightEdit(null); reload(); }} />}
     </div>
   );
@@ -253,16 +260,17 @@ function NightStrip({ data, today, isParent, onNight }) {
   );
 }
 
-function FamilyTab({ me, isParent, data, byId, today, onEdit, onNight, reload }) {
+function FamilyTab({ me, isParent, isViewer, seesAll, data, byId, today, onEdit, onNight, reload }) {
   const end = addDays(today, 7);
   const soon = [...data.items.filter((i) => !i.done && i.due_on <= end), ...data.team.filter((e) => e.due_on <= end)].sort(byWhen);
   return (
     <>
       <Tonight data={data} today={today} />
       <NightStrip data={data} today={today} isParent={isParent} onNight={onNight} />
+      {isViewer && <WeeksCard data={data} today={today} />}
       <section className="card">
         <h2>Next 7 days</h2>
-        <ItemList items={soon} byId={byId} showWho={isParent} today={today} onEdit={onEdit} reload={reload} empty="Nothing due in the next week." />
+        <ItemList items={soon} byId={byId} showWho={seesAll} today={today} onEdit={onEdit} reload={reload} empty="Nothing due in the next week." />
       </section>
     </>
   );
@@ -280,7 +288,7 @@ function PersonTab({ person, me, isParent, data, today, onEdit, onNight, reload 
       <TeamCard entries={data.team.filter((e) => e.member_ids.includes(person.id))} today={today} showSetup={isParent && isDad && !data.teamReady} />
       <section className="card">
         <h2>{person.id === me.id ? 'Your list' : `${person.name}'s list`}</h2>
-        <ItemList items={open} byId={{}} today={today} onEdit={onEdit} reload={reload} empty="Nothing open. Tap + to add something." />
+        <ItemList items={open} byId={{}} today={today} onEdit={onEdit} reload={reload} empty={onEdit ? 'Nothing open. Tap + to add something.' : 'Nothing open.'} />
         {done.length > 0 && (
           <button className="link small" onClick={() => setShowDone((v) => !v)}>{showDone ? 'Hide done' : `Show done (${done.length})`}</button>
         )}
@@ -369,8 +377,8 @@ function ItemList({ items, byId, showWho, today, onEdit, reload, empty }) {
           <li key={it.id}>
             {head && <p className={`date-head${late ? ' late' : ''}`}>{it.due_on === today ? 'Today' : it.due_on === addDays(today, 1) ? 'Tomorrow' : fmt(it.due_on)}{late ? ' · overdue' : ''}</p>}
             <div className={`item${it.done ? ' done' : ''}`}>
-              <input type="checkbox" aria-label="Done" checked={it.done} onChange={async (e) => { await supabase.from('items').update({ done: e.target.checked, updated_at: new Date().toISOString() }).eq('id', it.id); reload(); }} />
-              <button className="item-body" onClick={() => onEdit({ ...it, due_time: it.due_time ? it.due_time.slice(0, 5) : '', notes: it.notes || '' })}>
+              <input type="checkbox" aria-label="Done" checked={it.done} disabled={!onEdit} onChange={async (e) => { await supabase.from('items').update({ done: e.target.checked, updated_at: new Date().toISOString() }).eq('id', it.id); reload(); }} />
+              <button className="item-body" disabled={!onEdit} onClick={() => onEdit && onEdit({ ...it, due_time: it.due_time ? it.due_time.slice(0, 5) : '', notes: it.notes || '' })}>
                 <span className="title">{it.title}</span>
                 <span className="meta">
                   <span className="kind">{KIND_LABEL[it.kind] || it.kind}</span>

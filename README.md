@@ -8,6 +8,9 @@ plus tests, meets, games and to-dos per person.
   Each boy sees the Family tab and his own tab, and can add or check off only his own items.
   This is enforced by row-level security in `supabase/001_family_schema.sql`, keyed on a
   `family.members` list, because the Supabase project's sign-in pool is shared with other apps.
+- **Mom (viewer):** sees the Family tab, custody weeks, every boy's tab and the Broncos games,
+  and can't add, check off or change anything. Dad's own list stays hidden from her.
+  Set up by `supabase/003_mom_view.sql`; her login is Dad's sign-in email with `+mom`.
 - **Custody nights:** the Google Calendar series "Kids with Bryant" / "Kids with Jessalyn"
   alternate every Friday. The app stores one anchor date (`family.custody_pattern`) and
   computes every night from it; tapping a night saves an exception in `family.custody_overrides`.
@@ -20,12 +23,12 @@ plus tests, meets, games and to-dos per person.
 ## Setup
 
 1. Run `supabase/001_family_schema.sql` in the Supabase SQL editor (with real sign-in emails),
-   then `supabase/002_broncos_and_school.sql`.
+   then `supabase/002_broncos_and_school.sql`, then `supabase/003_mom_view.sql`.
 2. Supabase > Project Settings > Data API > Exposed schemas: add `family`.
 3. Supabase > Authentication > Users > Add user > Create new user, once per person,
-   with the emails from step 1 and "Auto Confirm User" ticked.
+   with the emails from step 1 (Mom: Dad's email with +mom) and "Auto Confirm User" ticked.
 4. Vercel env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_KEY` (publishable key),
-   `NEXT_PUBLIC_LOGIN_BASE` (Dad's sign-in email; the boys use its +bryson, +bennett, +brooks versions).
+   `NEXT_PUBLIC_LOGIN_BASE` (Dad's sign-in email; the boys and Mom use its +bryson, +bennett, +brooks, +mom versions).
    The sign-in screen is "tap your name, then password", so nobody types an email.
 
 ## Develop
