@@ -3,7 +3,7 @@
 A private PWA for Bryant and the boys: which house everyone is at each night,
 plus tests, meets, games and to-dos per person.
 
-- **Stack:** Next.js on Vercel, Supabase (project `bryants-fun-projects`, schema `family`).
+- **Stack:** Next.js on Vercel (team "Bryant's personal stuff", project `loy-family-organizer`), Supabase (project `bryants-fun-projects`, schema `family`).
 - **Who sees what:** Bryant (parent) sees every tab and can change custody nights.
   Each boy sees the Family tab and his own tab, and can add or check off only his own items.
   This is enforced by row-level security in `supabase/001_family_schema.sql`, keyed on a
