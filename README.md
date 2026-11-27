@@ -8,9 +8,14 @@ plus tests, meets, games and to-dos per person.
   Each boy sees the Family tab and his own tab, and can add or check off only his own items.
   This is enforced by row-level security in `supabase/001_family_schema.sql`, keyed on a
   `family.members` list, because the Supabase project's sign-in pool is shared with other apps.
-- **Mom (viewer):** sees the Family tab, custody weeks, every boy's tab and the Broncos games,
-  and can't add, check off or change anything. Dad's own list stays hidden from her.
-  Set up by `supabase/003_mom_view.sql`; her login is Dad's sign-in email with `+mom`.
+- **Mom (coparent):** sees the Family tab, custody weeks, every boy's tab and the Broncos games,
+  and can add, change and check off the boys' items and change nights. Dad's own list stays his.
+  Set up by `supabase/003_mom_login.sql`; her login is Dad's sign-in email with `+mom`.
+- **Change alerts:** when Dad or Mom changes a boy's item or a night, a trigger logs it in
+  `family.changes`. The other parent sees it in a "New from …" card on the Family tab, and gets a
+  phone alert if they tapped "Turn on alerts". Alerts are sent by the Supabase Edge Function
+  `supabase/functions/family-notify` (deploy with JWT verification off; it only sends what was
+  logged). It makes its own push key pair on first run and keeps it in `family.push_keys`.
 - **Custody nights:** the Google Calendar series "Kids with Bryant" / "Kids with Jessalyn"
   alternate every Friday. The app stores one anchor date (`family.custody_pattern`) and
   computes every night from it; tapping a night saves an exception in `family.custody_overrides`.
@@ -23,7 +28,7 @@ plus tests, meets, games and to-dos per person.
 ## Setup
 
 1. Run `supabase/001_family_schema.sql` in the Supabase SQL editor (with real sign-in emails),
-   then `supabase/002_broncos_and_school.sql`, then `supabase/003_mom_view.sql`.
+   then `supabase/002_broncos_and_school.sql`, then `supabase/003_mom_login.sql`.
 2. Supabase > Project Settings > Data API > Exposed schemas: add `family`.
 3. Supabase > Authentication > Users > Add user > Create new user, once per person,
    with the emails from step 1 (Mom: Dad's email with +mom) and "Auto Confirm User" ticked.
