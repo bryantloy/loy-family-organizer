@@ -124,3 +124,5 @@ input, select, textarea { width: 100%; padding: 10px 12px; border-radius: 10px; 
 .pill-btn.h-dad { background: var(--dad-bg); color: var(--dad); }
 .pill-btn.h-mom { background: var(--mom-bg); color: var(--mom); }
 .pill-btn.h-travel { background: var(--travel-bg); color: var(--travel); }
+.who-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.who-grid .chip { padding: 16px 0; font-size: 1.05rem; border-radius: 12px; }

@@ -18,7 +18,9 @@ plus tests, meets, games and to-dos per person.
 2. Supabase > Project Settings > Data API > Exposed schemas: add `family`.
 3. Supabase > Authentication > Users > Add user > Create new user, once per person,
    with the emails from step 1 and "Auto Confirm User" ticked.
-4. Vercel env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_KEY` (publishable key).
+4. Vercel env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_KEY` (publishable key),
+   `NEXT_PUBLIC_LOGIN_BASE` (Dad's sign-in email; the boys use its +bryson, +bennett, +brooks versions).
+   The sign-in screen is "tap your name, then password", so nobody types an email.
 
 ## Develop
 

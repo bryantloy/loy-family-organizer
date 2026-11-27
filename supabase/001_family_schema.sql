@@ -1,8 +1,8 @@
 -- Loy family organizer, slice 1: members, custody nights, items.
 -- Additive only: creates the new "family" schema and touches nothing in
 -- public (Loy Travel) or football (Broncos). Safe to run more than once.
--- Replace the four emails with the sign-in emails you create in
--- Supabase > Authentication > Users (no email is ever sent to them).
+-- Replace the emails: Dad = NEXT_PUBLIC_LOGIN_BASE, each boy = its "+name"
+-- version. Create users with them in Supabase > Authentication > Users.
 
 create schema if not exists family;
 

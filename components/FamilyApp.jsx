@@ -43,34 +43,64 @@ function Shell({ children }) {
   );
 }
 
+// Sign-in names. Nobody types an email: each name maps to a login address
+// in Supabase. Dad's is the base address (an env var, so it stays out of the
+// repo); each boy's is a "+name" version of it, which needs no account of
+// its own and would land in Dad's inbox if anything were ever sent.
+const BASE = (process.env.NEXT_PUBLIC_LOGIN_BASE || '').trim().toLowerCase();
+const plus = (tag) => {
+  const at = BASE.indexOf('@');
+  return at > 0 ? `${BASE.slice(0, at)}+${tag}${BASE.slice(at)}` : '';
+};
+const LOGINS = [
+  { name: 'Dad', email: BASE, color: '#2563eb' },
+  { name: 'Bryson', email: plus('bryson'), color: '#16a34a' },
+  { name: 'Bennett', email: plus('bennett'), color: '#ea580c' },
+  { name: 'Brooks', email: plus('brooks'), color: '#9333ea' },
+];
+
 function SignIn() {
-  const [email, setEmail] = useState('');
+  const [who, setWho] = useState(() => {
+    try { return localStorage.getItem('loy-family-who') || ''; } catch { return ''; }
+  });
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const login = LOGINS.find((l) => l.email === who);
 
   async function submit(e) {
     e.preventDefault();
+    if (!login) return;
     setBusy(true);
     setError('');
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    if (error) setError(error.message === 'Invalid login credentials' ? "That email and password don't match." : error.message);
+    try { localStorage.setItem('loy-family-who', login.email); } catch {}
+    const { error } = await supabase.auth.signInWithPassword({ email: login.email, password });
+    if (error) setError(error.message === 'Invalid login credentials' ? "That password doesn't match." : error.message);
     setBusy(false);
   }
 
   return (
     <Shell>
       <form className="card signin" onSubmit={submit}>
-        <label>
-          Email
-          <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        </label>
-        <label>
-          Password
-          <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        </label>
-        {error && <p className="error">{error}</p>}
-        <button className="primary" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+        <p className="muted small">Who's signing in?</p>
+        <div className="who-grid">
+          {LOGINS.map((l) => (
+            <button type="button" key={l.email} className={who === l.email ? 'chip on' : 'chip'} style={{ '--c': l.color }} onClick={() => { setWho(l.email); setError(''); }}>
+              {l.name}
+            </button>
+          ))}
+        </div>
+        {login && (
+          <>
+            <input type="email" autoComplete="username" value={login.email} readOnly hidden />
+            <label>
+              Password
+              <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus />
+            </label>
+            {error && <p className="error">{error}</p>}
+            <button className="primary" disabled={busy}>{busy ? 'Signing in…' : `Sign in as ${login.name}`}</button>
+          </>
+        )}
       </form>
     </Shell>
   );
@@ -249,7 +279,6 @@ function PersonTab({ person, me, isParent, data, today, onEdit, onNight, reload 
         )}
         {showDone && <ItemList items={done} byId={{}} today={today} onEdit={onEdit} reload={reload} />}
       </section>
-      {isDad && isParent && <LoginsCard members={data.members} reload={reload} />}
     </>
   );
 }
@@ -392,42 +421,6 @@ function NightSheet({ night, data, onClose, onSaved }) {
       {cur?.source === 'override' && <button className="link" onClick={() => pick(null)}>Go back to the calendar weeks</button>}
       {error && <p className="error">{error}</p>}
     </Sheet>
-  );
-}
-
-function LoginsCard({ members, reload }) {
-  const [edit, setEdit] = useState(null); // { id, value }
-  const [error, setError] = useState('');
-
-  async function save() {
-    const res = await supabase.from('members').update({ email: edit.value.trim().toLowerCase() || null }).eq('id', edit.id);
-    if (res.error) return setError(res.error.message);
-    setEdit(null);
-    setError('');
-    reload();
-  }
-
-  return (
-    <section className="card">
-      <h2>Sign-in emails</h2>
-      <p className="small muted">Each person signs in with the email and password you set for them in Supabase.</p>
-      <ul className="logins">
-        {members.map((m) => (
-          <li key={m.id}>
-            <span className="who-chip" style={{ '--c': m.color }}>{m.name}</span>
-            {edit?.id === m.id ? (
-              <span className="inline">
-                <input type="email" value={edit.value} onChange={(e) => setEdit({ id: m.id, value: e.target.value })} />
-                <button onClick={save}>Save</button>
-              </span>
-            ) : (
-              <button className="link small" onClick={() => setEdit({ id: m.id, value: m.email || '' })}>{m.email || 'Add email'}</button>
-            )}
-          </li>
-        ))}
-      </ul>
-      {error && <p className="error">{error}</p>}
-    </section>
   );
 }
 
